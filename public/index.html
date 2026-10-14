@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World War — بازی جنگ جهانی</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  :root{
+    --bg:#060912; --panel:#0e1320; --panel2:#131a2b; --accent:#00e5ff; --accent2:#ff2d6e;
+    --gold:#ffd23f; --green:#39ff88; --text:#e8edf7; --muted:#8a93ab; --border:#1f2740;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(ellipse at top,#0c1324,#05070d 70%);color:var(--text);
+    font-family:'Vazirmatn',Tahoma,sans-serif;min-height:100vh}
+  #app{max-width:1200px;margin:0 auto;padding:16px}
+  .hidden{display:none !important}
+
+  /* AUTH SCREEN */
+  #auth{display:flex;align-items:center;justify-content:center;min-height:90vh}
+  .auth-box{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:32px;
+    width:320px;box-shadow:0 0 40px rgba(0,229,255,.08)}
+  .auth-box h1{text-align:center;color:var(--accent);font-size:22px;margin-bottom:4px;
+    text-shadow:0 0 12px rgba(0,229,255,.6)}
+  .auth-box p{text-align:center;color:var(--muted);font-size:12px;margin-top:0}
+  input{width:100%;padding:10px 12px;margin:6px 0;border-radius:8px;border:1px solid var(--border);
+    background:#0a0f1c;color:var(--text);font-family:inherit}
+  button{cursor:pointer;border:none;border-radius:8px;padding:10px 16px;font-family:inherit;font-weight:bold}
+  .btn-main{width:100%;background:linear-gradient(135deg,var(--accent),#0088aa);color:#001018;margin-top:8px}
+  .switch{text-align:center;margin-top:10px;font-size:12px;color:var(--muted);cursor:pointer}
+  .switch span{color:var(--accent)}
+  .err{color:var(--accent2);font-size:12px;text-align:center;min-height:16px}
+
+  /* TOP BAR */
+  #topbar{display:flex;justify-content:space-between;align-items:center;background:var(--panel);
+    border:1px solid var(--border);border-radius:12px;padding:10px 16px;margin-bottom:12px;flex-wrap:wrap;gap:10px}
+  #topbar .stat{font-size:13px;color:var(--muted)}
+  #topbar .stat b{color:var(--gold);font-size:16px;display:block}
+  #balance{color:var(--green);text-shadow:0 0 10px rgba(57,255,136,.5);transition:all .2s}
+  .pulse{animation:pulse .5s ease}
+  @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
+
+  /* TABS */
+  #tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  #tabs button{background:var(--panel2);color:var(--muted);border:1px solid var(--border)}
+  #tabs button.active{background:var(--accent);color:#001018}
+
+  /* MAP */
+  #mapWrap{background:linear-gradient(180deg,#071023,#050810);border:1px solid var(--border);
+    border-radius:14px;padding:10px;position:relative;overflow:hidden}
+  svg#map{width:100%;height:auto;display:block}
+  .continent{fill:#13233f;stroke:#223457;stroke-width:1}
+  .country-node{cursor:pointer}
+  .country-node circle{fill:var(--accent);opacity:.85;transition:all .2s}
+  .country-node.taken circle{fill:var(--gold)}
+  .country-node.mine circle{fill:var(--green)}
+  .country-node:hover circle{opacity:1;filter:drop-shadow(0 0 8px var(--accent))}
+  .country-node text{fill:var(--text);font-size:9px;pointer-events:none;text-anchor:middle}
+  .ring{fill:none;stroke:var(--accent);stroke-width:1;opacity:0;animation:none}
+  .country-node.mine .ring{animation:ring 2.4s ease-out infinite;stroke:var(--green)}
+  .country-node.taken:not(.mine) .ring{opacity:0}
+  @keyframes ring{0%{r:6;opacity:.8;stroke-width:2}100%{r:22;opacity:0;stroke-width:0}}
+
+  .attack-beam{stroke:var(--accent2);stroke-width:2;opacity:0;filter:drop-shadow(0 0 6px var(--accent2))}
+  .attack-beam.fire{animation:fire 1s ease-out forwards}
+  @keyframes fire{0%{opacity:0}20%{opacity:1}100%{opacity:0}}
+
+  /* PANELS */
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:12px}
+  .panel h2{margin-top:0;font-size:16px;color:var(--accent)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+  .card{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px;
+    transition:transform .15s}
+  .card:hover{transform:translateY(-3px)}
+  .card h3{margin:0 0 4px;font-size:14px;color:var(--text)}
+  .card p{margin:4px 0;font-size:12px;color:var(--muted)}
+  .card .price{color:var(--gold);font-weight:bold}
+  .card button{width:100%;margin-top:8px;background:linear-gradient(135deg,var(--accent),#0088aa);color:#001018}
+
+  .list-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;
+    border-bottom:1px solid var(--border);font-size:13px}
+  .list-row:last-child{border-bottom:none}
+  .target-actions button{margin-inline-start:4px;font-size:11px;padding:6px 8px}
+  .act-hack{background:var(--accent2);color:#fff}
+  .act-shutdown{background:#8b3fff;color:#fff}
+  .act-attack{background:#ff7a00;color:#fff}
+
+  #log{max-height:180px;overflow-y:auto;font-size:12px}
+  #log div{padding:4px 0;border-bottom:1px dashed var(--border);color:var(--muted)}
+  #log .ok{color:var(--green)}
+  #log .fail{color:var(--accent2)}
+
+  #toast-wrap{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:50;display:flex;
+    flex-direction:column;gap:6px;align-items:center}
+  .toast{background:#111826;border:1px solid var(--accent);color:var(--text);padding:8px 16px;
+    border-radius:20px;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,.5);animation:toastIn .3s ease, toastOut .4s ease 2.6s forwards}
+  @keyframes toastIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes toastOut{to{opacity:0;transform:translateY(-10px)}}
+</style>
+</head>
+<body>
+<div id="toast-wrap"></div>
+
+<div id="app">
+
+  <!-- AUTH -->
+  <div id="auth">
+    <div class="auth-box">
+      <h1>🌍 WORLD WAR</h1>
+      <p>بازی استراتژی جهانی — ماینر، هک، جنگ</p>
+      <input id="in-username" placeholder="نام کاربری">
+      <input id="in-password" type="password" placeholder="رمز عبور">
+      <button class="btn-main" id="btn-submit">ورود</button>
+      <div class="err" id="auth-err"></div>
+      <div class="switch" id="switch-mode">حساب نداری؟ <span>ثبت‌نام کن</span></div>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div id="game" class="hidden">
+    <div id="topbar">
+      <div class="stat">بازیکن<b id="hud-username">-</b></div>
+      <div class="stat">کشور<b id="hud-country">انتخاب نشده</b></div>
+      <div class="stat">موجودی<b id="balance">$0</b></div>
+      <div class="stat">نرخ ماینر<b id="hud-rate">$0/h</b></div>
+      <div class="stat">سپر<b id="hud-shield">0</b></div>
+      <div class="stat">قدرت حمله<b id="hud-atk">0</b></div>
+      <button id="btn-collect" style="background:var(--green);color:#001;">💰 برداشت ماینر</button>
+    </div>
+
+    <div id="tabs">
+      <button data-tab="map" class="active">🗺️ نقشه</button>
+      <button data-tab="shop">🛒 فروشگاه</button>
+      <button data-tab="inventory">🎒 کوله‌پشتی</button>
+      <button data-tab="leaderboard">🏆 برترین‌ها</button>
+      <button data-tab="log">📜 رویدادها</button>
+    </div>
+
+    <div id="tab-map">
+      <div id="mapWrap">
+        <svg id="map" viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#0d2142"/>
+              <stop offset="100%" stop-color="#060912"/>
+            </radialGradient>
+          </defs>
+          <rect x="0" y="0" width="1000" height="500" fill="url(#glow)"/>
+          <!-- stylized continents (rough blobs, not geo-accurate) -->
+          <g class="continent" opacity="0.9">
+            <path d="M120,140 Q180,90 240,130 Q280,160 260,230 Q230,300 170,320 Q110,300 100,220 Q95,170 120,140 Z"/>
+            <path d="M250,300 Q310,280 340,340 Q360,400 320,440 Q280,460 260,410 Q240,350 250,300 Z"/>
+            <path d="M430,120 Q500,100 540,140 Q560,180 520,210 Q460,220 430,180 Q415,150 430,120 Z"/>
+            <path d="M440,210 Q520,220 540,290 Q550,360 500,410 Q460,420 440,360 Q420,280 440,210 Z"/>
+            <path d="M600,120 Q720,90 820,140 Q860,180 800,220 Q680,240 610,200 Q580,160 600,120 Z"/>
+            <path d="M620,220 Q700,230 720,290 Q710,330 650,330 Q610,300 600,260 Q605,235 620,220 Z"/>
+            <path d="M740,340 Q820,330 850,380 Q830,420 760,420 Q730,390 740,340 Z"/>
+          </g>
+          <g id="nodes"></g>
+          <g id="beams"></g>
+        </svg>
+      </div>
+      <div class="panel">
+        <h2>انتخاب کشور</h2>
+        <p style="color:var(--muted);font-size:12px">روی یک نقطه‌ی طلایی/آبی روی نقشه کلیک کن تا اطلاعاتش رو ببینی. نقطه‌ی سبز یعنی کشور توئه.</p>
+        <div id="countryInfo" class="panel" style="display:none;margin-top:8px"></div>
+      </div>
+    </div>
+
+    <div id="tab-shop" class="panel hidden">
+      <h2>فروشگاه</h2>
+      <div class="grid" id="shopGrid"></div>
+    </div>
+
+    <div id="tab-inventory" class="panel hidden">
+      <h2>کوله‌پشتی</h2>
+      <div id="invList"></div>
+    </div>
+
+    <div id="tab-leaderboard" class="panel hidden">
+      <h2>برترین بازیکنان</h2>
+      <div id="lbList"></div>
+    </div>
+
+    <div id="tab-log" class="panel hidden">
+      <h2>رویدادهای اخیر جهان</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
