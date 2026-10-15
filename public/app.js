@@ -3,6 +3,9 @@ let me = null;
 let countries = [];
 let isRegisterMode = false;
 let countryPos = {}; // code -> {x,y}
+let geoPath = null;       // d3 path generator, fitted to our viewBox
+let worldFeatures = null; // all land features from the TopoJSON
+let mapReady = false;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -98,21 +101,65 @@ setInterval(() => {
   $('#balance').textContent = '$' + Math.round(me.balance).toLocaleString();
 }, 1000);
 
-// ---------- MAP ----------
+// ---------- REAL-WORLD MAP (topojson + d3-geo) ----------
+async function ensureWorldMap() {
+  if (mapReady) return;
+  const topo = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r => r.json());
+  const fc = topojson.feature(topo, topo.objects.countries); // GeoJSON FeatureCollection
+  worldFeatures = fc.features;
+
+  const projection = d3.geoNaturalEarth1().fitSize([960, 500], fc);
+  geoPath = d3.geoPath(projection);
+
+  const land = $('#land');
+  land.innerHTML = '';
+  worldFeatures.forEach(f => {
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', geoPath(f));
+    p.setAttribute('data-geoname', f.properties.name);
+    land.appendChild(p);
+  });
+
+  $('#mapLoading').classList.add('hidden');
+  $('#map').classList.remove('hidden');
+  mapReady = true;
+}
+
+function findLandPath(geoName) {
+  return document.querySelector(`#land path[data-geoname="${CSS.escape(geoName)}"]`);
+}
+
 async function loadCountries() {
   const data = await api('/countries');
   countries = data.countries;
+  await ensureWorldMap();
+
   const nodes = $('#nodes');
   nodes.innerHTML = '';
+
   countries.forEach(c => {
-    countryPos[c.code] = { x: c.x, y: c.y };
+    const landEl = findLandPath(c.geoName);
+    const feature = worldFeatures.find(f => f.properties.name === c.geoName);
+    const centroid = feature ? geoPath.centroid(feature) : [480, 250];
+    countryPos[c.code] = { x: centroid[0], y: centroid[1] };
+
+    const isMine = !!(me && c.taken && c.taken.ownerId === me.id);
+    const cls = ['selectable'];
+    if (c.taken) cls.push('taken');
+    if (isMine) cls.push('mine');
+
+    if (landEl) {
+      landEl.setAttribute('class', cls.join(' '));
+      landEl.onclick = () => showCountry(c.code);
+    }
+
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('class', 'country-node' + (c.taken ? ' taken' : '') + (me && c.taken && c.taken.ownerId === me.id ? ' mine' : ''));
+    g.setAttribute('class', 'country-node' + (c.taken ? ' taken' : '') + (isMine ? ' mine' : ''));
     g.setAttribute('data-code', c.code);
     g.innerHTML = `
-      <circle class="ring" cx="${c.x}" cy="${c.y}" r="6"></circle>
-      <circle cx="${c.x}" cy="${c.y}" r="6"></circle>
-      <text x="${c.x}" y="${c.y - 10}">${c.name}</text>
+      <circle class="ring" cx="${centroid[0]}" cy="${centroid[1]}" r="6"></circle>
+      <circle cx="${centroid[0]}" cy="${centroid[1]}" r="6"></circle>
+      <text x="${centroid[0]}" y="${centroid[1] - 10}">${c.name}</text>
     `;
     g.onclick = () => showCountry(c.code);
     nodes.appendChild(g);
